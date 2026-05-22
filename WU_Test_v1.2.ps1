@@ -1,6 +1,6 @@
 $_creator = "Mike Lu (lu.mike@inventec.com)"
-$_version = '1.1'
-$_changedate = 05/06/2026
+$_version = '1.2'
+$_changedate = 05/22/2026
 
 
 # Set-ExecutionPolicy Bypass
@@ -170,9 +170,16 @@ function Invoke-StartSPTest {
 
     Write-Host "Copied $($exe.Name) and $($cva.Name) to $destDir" -ForegroundColor Green
 
-    # 4) Run SPTest
+    # 4) Run SPTest (1/2 on first run, 2/2 on second; temp flag in script dir)
+    $spTestLaunchFlag = Join-Path $PSScriptRoot ".sptest_launch.flag"
     Write-Host ""
-    Write-Host "Launching SPTest..." -ForegroundColor Cyan
+    if (Test-Path -LiteralPath $spTestLaunchFlag) {
+        Write-Host "Launching SPTest (2/2)..." -ForegroundColor Cyan
+        Remove-Item -LiteralPath $spTestLaunchFlag -Force
+    } else {
+        Write-Host "Launching SPTest (1/2)..." -ForegroundColor Cyan
+        New-Item -ItemType File -Path $spTestLaunchFlag -Force | Out-Null
+    }
     Write-Host ""
     $p = Start-Process -FilePath $spTestExe -ArgumentList @("/spq", $spBase) -WorkingDirectory $spTestRoot -Wait -PassThru
 }
