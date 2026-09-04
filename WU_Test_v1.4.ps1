@@ -17,7 +17,6 @@ function Get-ScriptDirectory {
     } catch {}
     if ($PSScriptRoot) { return $PSScriptRoot }
     if ($MyInvocation.MyCommand.Path) { return Split-Path $MyInvocation.MyCommand.Path -Parent }
-    # 增加 .NET 核心保險路徑 (對打包成 EXE 的相容性極佳)
     return [System.AppContext]::BaseDirectory.TrimEnd('\')
 }
 
@@ -79,6 +78,24 @@ function Get-SafeFileSystemItems {
         return @($Items | ForEach-Object { Get-Item -LiteralPath $_ })
     } catch {
         return @()
+    }
+}
+
+# 解除安裝指定名稱的應用程式
+function Uninstall-App {
+    param(
+        [string]$AppName
+    )
+
+    $app = Get-ItemProperty `
+        HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\* ,
+        HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* |
+        Where-Object { $_.DisplayName -like "*$AppName*" } |
+        Select-Object -First 1
+
+    if ($app) {
+        $cmd = ($app.UninstallString -replace '/I','/X') + ' /qn /norestart'
+        cmd.exe /c $cmd
     }
 }
 
@@ -146,8 +163,22 @@ function Invoke-CheckEvent307 {
 
 # 功能 4: 安裝並執行 SPTest
 function Invoke-StartSPTest {
-    # 1) 確保 SPTest 已安裝
-    if (-not (Test-Path -LiteralPath $GLOBAL_CONFIG.SPTestExe)) {
+    # 1) 檢查 SPTest 是否已安裝且版本符合需求
+    $needInstall = $true
+    if (Test-Path -LiteralPath $GLOBAL_CONFIG.SPTestExe) {
+        $installedVer = (Get-Item -LiteralPath $GLOBAL_CONFIG.SPTestExe).VersionInfo.FileVersion
+        if ($installedVer -eq $GLOBAL_CONFIG.SPTest_ver) {
+	    Write-Host "SPTest already installed. Skipping install." -ForegroundColor DarkGray
+            $needInstall = $false
+        } else {
+            Write-Host "Installed SPTest version ($installedVer) does not match required version ($($GLOBAL_CONFIG.SPTest_ver)). Uninstalling..." -ForegroundColor Yellow
+            Uninstall-App "SPTest"
+            Start-Sleep -Seconds 3
+			Remove-Item -LiteralPath $GLOBAL_CONFIG.SPTestRoot -Recurse -Force -ErrorAction SilentlyContinue  # 同時刪除整個SPTest資料夾
+        }
+    }
+
+    if ($needInstall) {
         $TempMsiPath = Join-Path $env:TEMP "SPTestInstaller_$([Guid]::NewGuid().Guid).msi"
         try {
             Write-Host "Installing SPTest tool..."
@@ -173,8 +204,6 @@ function Invoke-StartSPTest {
             return
         }
         Write-Host "SPTest installed successfully." -ForegroundColor Green
-    } else {
-        Write-Host "SPTest already installed. Skipping install." -ForegroundColor DarkGray
     }
 	
 	# 初始化 SPQ 目錄
@@ -392,5 +421,3 @@ do {
     Clear-Host
 
 } while ($true)
-	
-
